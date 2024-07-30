@@ -75,6 +75,73 @@ const Grid: React.FC = () => {
     }
   };
 
+  const clearOutOfBoundsCells = useCallback(() => {
+    setSelectedCells((prevSelected) => {
+      const newSelected = new Set<string>();
+      for (const cellKey of prevSelected) {
+        const [row, col] = cellKey.split(",").map(Number);
+        if (row < rowCount && col < colCount) {
+          newSelected.add(cellKey);
+        }
+      }
+      return newSelected;
+    });
+  }, [rowCount, colCount]);
+
+  const fillEnclosedAreas = useCallback(() => {
+    const isSelected = (row: number, col: number) =>
+      selectedCells.has(`${row},${col}`);
+    const isValid = (row: number, col: number) =>
+      row >= 0 && row < rowCount && col >= 0 && col < colCount;
+
+    const dfs = (row: number, col: number, visited: Set<string>): boolean => {
+      if (!isValid(row, col)) {
+        return false; // グリッドの端に到達した場合、閉じていない
+      }
+      if (isSelected(row, col)) {
+        return true; // 選択されたセルに到達
+      }
+      if (visited.has(`${row},${col}`)) {
+        return true; // 既に訪問済み
+      }
+
+      visited.add(`${row},${col}`);
+
+      // 四方向を探索
+      const directions = [
+        [-1, 0],
+        [1, 0],
+        [0, -1],
+        [0, 1],
+      ];
+      for (const [dx, dy] of directions) {
+        if (!dfs(row + dx, col + dy, visited)) {
+          return false; // 閉じていない領域を発見
+        }
+      }
+
+      return true; // この領域は閉じている
+    };
+
+    const newSelectedCells = new Set(selectedCells);
+
+    for (let row = 0; row < rowCount; row++) {
+      for (let col = 0; col < colCount; col++) {
+        if (!isSelected(row, col)) {
+          const visited = new Set<string>();
+          if (dfs(row, col, visited)) {
+            // 閉じた領域を発見したので、訪問したすべてのセルを選択状態にする
+            for (const cell of visited) {
+              newSelectedCells.add(cell);
+            }
+          }
+        }
+      }
+    }
+
+    setSelectedCells(newSelectedCells);
+  }, [selectedCells, rowCount, colCount]);
+
   const gridLinesPath = useMemo(() => {
     let path = "";
     for (let i = 0; i <= colCount; i++) {
@@ -161,6 +228,8 @@ const Grid: React.FC = () => {
         />
         <span>{colCount}</span>
       </div>
+      <button onClick={clearOutOfBoundsCells}>Clear Out-of-Bounds Cells</button>
+      <button onClick={fillEnclosedAreas}>Fill Enclosed Areas</button>
       <svg
         width={actualWidth}
         height={actualHeight}
