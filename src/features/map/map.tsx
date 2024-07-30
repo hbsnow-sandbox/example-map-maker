@@ -39,20 +39,39 @@ const Grid: React.FC = () => {
   const actualWidth = width + strokeWidth;
   const actualHeight = height + strokeWidth;
 
-  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+  const [history, setHistory] = useState<Set<string>[]>([new Set()]);
+  const [historyIndex, setHistoryIndex] = useState(0);
 
-  const handleCellClick = useCallback((row: number, col: number) => {
-    setSelectedCells((prevSelected) => {
-      const newSelected = new Set(prevSelected);
+  const selectedCells = useMemo(
+    () => history[historyIndex],
+    [history, historyIndex]
+  );
+
+  const updateHistory = useCallback(
+    (newSelectedCells: Set<string>) => {
+      setHistory((prevHistory) => {
+        const newHistory = prevHistory.slice(0, historyIndex + 1);
+        newHistory.push(new Set(newSelectedCells));
+        return newHistory;
+      });
+      setHistoryIndex((prevIndex) => prevIndex + 1);
+    },
+    [historyIndex]
+  );
+
+  const handleCellClick = useCallback(
+    (row: number, col: number) => {
+      const newSelected = new Set(selectedCells);
       const key = `${row},${col}`;
       if (newSelected.has(key)) {
         newSelected.delete(key);
       } else {
         newSelected.add(key);
       }
-      return newSelected;
-    });
-  }, []);
+      updateHistory(newSelected);
+    },
+    [selectedCells, updateHistory]
+  );
 
   const handleCellSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newSize = Number(event.target.value);
@@ -76,17 +95,19 @@ const Grid: React.FC = () => {
   };
 
   const clearOutOfBoundsCells = useCallback(() => {
-    setSelectedCells((prevSelected) => {
-      const newSelected = new Set<string>();
-      for (const cellKey of prevSelected) {
-        const [row, col] = cellKey.split(",").map(Number);
-        if (row < rowCount && col < colCount) {
-          newSelected.add(cellKey);
-        }
+    const newSelected = new Set<string>();
+    for (const cellKey of selectedCells) {
+      const [row, col] = cellKey.split(",").map(Number);
+      if (row < rowCount && col < colCount) {
+        newSelected.add(cellKey);
       }
-      return newSelected;
-    });
-  }, [rowCount, colCount]);
+    }
+    updateHistory(newSelected);
+  }, [selectedCells, rowCount, colCount, updateHistory]);
+
+  const clearAllCells = useCallback(() => {
+    updateHistory(new Set());
+  }, [updateHistory]);
 
   const fillEnclosedAreas = useCallback(() => {
     const isSelected = (row: number, col: number) =>
@@ -139,8 +160,20 @@ const Grid: React.FC = () => {
       }
     }
 
-    setSelectedCells(newSelectedCells);
-  }, [selectedCells, rowCount, colCount]);
+    updateHistory(newSelectedCells);
+  }, [selectedCells, rowCount, colCount, updateHistory]);
+
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      setHistoryIndex((prevIndex) => prevIndex - 1);
+    }
+  }, [historyIndex]);
+
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex((prevIndex) => prevIndex + 1);
+    }
+  }, [history.length, historyIndex]);
 
   const gridLinesPath = useMemo(() => {
     let path = "";
@@ -230,6 +263,13 @@ const Grid: React.FC = () => {
       </div>
       <button onClick={clearOutOfBoundsCells}>Clear Out-of-Bounds Cells</button>
       <button onClick={fillEnclosedAreas}>Fill Enclosed Areas</button>
+      <button onClick={clearAllCells}>Clear All Cells</button>
+      <button onClick={undo} disabled={historyIndex === 0}>
+        Undo
+      </button>
+      <button onClick={redo} disabled={historyIndex === history.length - 1}>
+        Redo
+      </button>
       <svg
         width={actualWidth}
         height={actualHeight}
