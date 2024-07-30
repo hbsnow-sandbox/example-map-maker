@@ -55,6 +55,16 @@ const Grid: React.FC = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState("#000000");
   const [showOutline, setShowOutline] = useState(true);
+  const [colors, setColors] = useState([
+    "#000000",
+    "#FF0000",
+    "#00FF00",
+    "#0000FF",
+    "#FFFF00",
+    "#FF00FF",
+    "#00FFFF",
+  ]);
+  const [customColor, setCustomColor] = useState("#000000");
 
   const cellStates = useMemo(
     () => history[historyIndex].cells,
@@ -269,15 +279,12 @@ const Grid: React.FC = () => {
     return paths.join(" ");
   }, [cellStates, cellSize, strokeWidth]);
 
-  const colors = [
-    "#000000",
-    "#FF0000",
-    "#00FF00",
-    "#0000FF",
-    "#FFFF00",
-    "#FF00FF",
-    "#00FFFF",
-  ];
+  const addCustomColor = useCallback(() => {
+    if (!colors.includes(customColor)) {
+      setColors((prevColors) => [...prevColors, customColor]);
+      setSelectedColor(customColor);
+    }
+  }, [colors, customColor]);
 
   return (
     <div>
@@ -333,6 +340,14 @@ const Grid: React.FC = () => {
             onClick={() => setSelectedColor(color)}
           />
         ))}
+      </div>
+      <div>
+        <input
+          type="color"
+          value={customColor}
+          onChange={(e) => setCustomColor(e.target.value)}
+        />
+        <button onClick={addCustomColor}>Add Custom Color</button>
       </div>
       <div>
         <label>
