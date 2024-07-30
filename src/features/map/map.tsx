@@ -1,32 +1,42 @@
 import React, { useState, useMemo, useCallback } from "react";
 import styles from "./Grid.module.css";
 
-type CellData = {
-  key: string;
+type CellProps = {
   row: number;
   col: number;
-  isSelected: boolean;
-};
-
-type CellProps = CellData & {
-  onClick: (row: number, col: number) => void;
   cellSize: number;
   strokeWidth: number;
+  color: string | undefined;
+  hasOutline: boolean;
+  onToggle: (row: number, col: number) => void;
 };
 
 const Cell: React.FC<CellProps> = React.memo(
-  ({ row, col, isSelected, onClick, cellSize, strokeWidth }) => (
-    <rect
-      className={`${styles.cell} ${isSelected ? styles.selected : ""}`}
-      x={strokeWidth / 2 + col * cellSize}
-      y={strokeWidth / 2 + row * cellSize}
-      width={cellSize}
-      height={cellSize}
-      strokeWidth={strokeWidth}
-      onClick={() => onClick(row, col)}
-    />
-  )
+  ({ row, col, cellSize, strokeWidth, color, hasOutline, onToggle }) => {
+    const handleClick = useCallback(() => {
+      onToggle(row, col);
+    }, [onToggle, row, col]);
+
+    return (
+      <rect
+        className={styles.cell}
+        x={strokeWidth / 2 + col * cellSize}
+        y={strokeWidth / 2 + row * cellSize}
+        width={cellSize}
+        height={cellSize}
+        fill={color || "white"}
+        stroke="black"
+        strokeWidth={strokeWidth}
+        onClick={handleClick}
+      />
+    );
+  }
 );
+
+type HistoryEntry = {
+  cells: Map<string, { color: string; hasOutline: boolean }>;
+  lastAction: string;
+};
 
 const Grid: React.FC = () => {
   const [cellSize, setCellSize] = useState(30);
@@ -39,19 +49,26 @@ const Grid: React.FC = () => {
   const actualWidth = width + strokeWidth;
   const actualHeight = height + strokeWidth;
 
-  const [history, setHistory] = useState<Set<string>[]>([new Set()]);
+  const [history, setHistory] = useState<HistoryEntry[]>([
+    { cells: new Map(), lastAction: "Initial state" },
+  ]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [selectedColor, setSelectedColor] = useState("#000000");
+  const [showOutline, setShowOutline] = useState(true);
 
-  const selectedCells = useMemo(
-    () => history[historyIndex],
+  const cellStates = useMemo(
+    () => history[historyIndex].cells,
     [history, historyIndex]
   );
 
   const updateHistory = useCallback(
-    (newSelectedCells: Set<string>) => {
+    (
+      newCellStates: Map<string, { color: string; hasOutline: boolean }>,
+      action: string
+    ) => {
       setHistory((prevHistory) => {
         const newHistory = prevHistory.slice(0, historyIndex + 1);
-        newHistory.push(new Set(newSelectedCells));
+        newHistory.push({ cells: new Map(newCellStates), lastAction: action });
         return newHistory;
       });
       setHistoryIndex((prevIndex) => prevIndex + 1);
@@ -59,18 +76,30 @@ const Grid: React.FC = () => {
     [historyIndex]
   );
 
-  const handleCellClick = useCallback(
+  const handleCellToggle = useCallback(
     (row: number, col: number) => {
-      const newSelected = new Set(selectedCells);
       const key = `${row},${col}`;
-      if (newSelected.has(key)) {
-        newSelected.delete(key);
+      const newCellStates = new Map(cellStates);
+      const currentState = newCellStates.get(key);
+
+      if (
+        currentState?.color === selectedColor &&
+        currentState?.hasOutline === showOutline
+      ) {
+        newCellStates.delete(key);
+        updateHistory(newCellStates, `Cleared cell (${row}, ${col})`);
       } else {
-        newSelected.add(key);
+        newCellStates.set(key, {
+          color: selectedColor,
+          hasOutline: showOutline,
+        });
+        updateHistory(
+          newCellStates,
+          `Colored cell (${row}, ${col}) with ${selectedColor}`
+        );
       }
-      updateHistory(newSelected);
     },
-    [selectedCells, updateHistory]
+    [cellStates, selectedColor, showOutline, updateHistory]
   );
 
   const handleCellSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -95,40 +124,26 @@ const Grid: React.FC = () => {
   };
 
   const clearOutOfBoundsCells = useCallback(() => {
-    const newSelected = new Set<string>();
-    for (const cellKey of selectedCells) {
-      const [row, col] = cellKey.split(",").map(Number);
+    const newCellStates = new Map<
+      string,
+      { color: string; hasOutline: boolean }
+    >();
+    for (const [key, state] of cellStates) {
+      const [row, col] = key.split(",").map(Number);
       if (row < rowCount && col < colCount) {
-        newSelected.add(cellKey);
+        newCellStates.set(key, state);
       }
     }
-    updateHistory(newSelected);
-  }, [selectedCells, rowCount, colCount, updateHistory]);
+    updateHistory(newCellStates, "Cleared out-of-bounds cells");
+  }, [cellStates, rowCount, colCount, updateHistory]);
 
   const clearAllCells = useCallback(() => {
-    setHistory((prevHistory) => {
-      // 現在の状態を保存
-      const currentState = new Set(prevHistory[historyIndex]);
-
-      // 新しい空の状態を追加
-      const newHistory = [
-        ...prevHistory.slice(0, historyIndex + 1),
-        new Set<string>(),
-      ];
-
-      // 現在の状態を履歴の最後に追加 (Undo 用)
-      newHistory.push(currentState);
-
-      return newHistory;
-    });
-
-    // ヒストリーインデックスを更新 (空の状態を指すように)
-    setHistoryIndex((prevIndex) => prevIndex + 1);
-  }, [historyIndex]);
+    updateHistory(new Map(), "Cleared all cells");
+  }, [updateHistory]);
 
   const fillEnclosedAreas = useCallback(() => {
-    const isSelected = (row: number, col: number) =>
-      selectedCells.has(`${row},${col}`);
+    const isColored = (row: number, col: number) =>
+      cellStates.has(`${row},${col}`);
     const isValid = (row: number, col: number) =>
       row >= 0 && row < rowCount && col >= 0 && col < colCount;
 
@@ -136,8 +151,8 @@ const Grid: React.FC = () => {
       if (!isValid(row, col)) {
         return false; // グリッドの端に到達した場合、閉じていない
       }
-      if (isSelected(row, col)) {
-        return true; // 選択されたセルに到達
+      if (isColored(row, col)) {
+        return true; // 色付きのセルに到達
       }
       if (visited.has(`${row},${col}`)) {
         return true; // 既に訪問済み
@@ -161,57 +176,65 @@ const Grid: React.FC = () => {
       return true; // この領域は閉じている
     };
 
-    const newSelectedCells = new Set(selectedCells);
+    const newCellStates = new Map(cellStates);
 
     for (let row = 0; row < rowCount; row++) {
       for (let col = 0; col < colCount; col++) {
-        if (!isSelected(row, col)) {
+        if (!isColored(row, col)) {
           const visited = new Set<string>();
           if (dfs(row, col, visited)) {
-            // 閉じた領域を発見したので、訪問したすべてのセルを選択状態にする
+            // 閉じた領域を発見したので、訪問したすべてのセルを選択色で塗る
             for (const cell of visited) {
-              newSelectedCells.add(cell);
+              newCellStates.set(cell, {
+                color: selectedColor,
+                hasOutline: showOutline,
+              });
             }
           }
         }
       }
     }
 
-    updateHistory(newSelectedCells);
-  }, [selectedCells, rowCount, colCount, updateHistory]);
+    updateHistory(newCellStates, "Filled enclosed areas");
+  }, [
+    cellStates,
+    rowCount,
+    colCount,
+    selectedColor,
+    showOutline,
+    updateHistory,
+  ]);
 
   const undo = useCallback(() => {
     if (historyIndex > 0) {
-      setHistoryIndex((prevIndex) => {
-        // Clear All Cells 操作の直後の場合、2つ前の状態に戻る
-        if (
-          prevIndex > 0 &&
-          history[prevIndex].size === 0 &&
-          history[prevIndex + 1]?.size > 0
-        ) {
-          return prevIndex - 2;
-        }
-        // 通常の Undo
-        return prevIndex - 1;
-      });
+      setHistoryIndex((prevIndex) => prevIndex - 1);
     }
-  }, [historyIndex, history]);
+  }, [historyIndex]);
 
   const redo = useCallback(() => {
     if (historyIndex < history.length - 1) {
-      setHistoryIndex((prevIndex) => {
-        // Clear All Cells 操作をスキップ
-        if (
-          history[prevIndex + 1].size === 0 &&
-          history[prevIndex + 2]?.size > 0
-        ) {
-          return prevIndex + 2;
-        }
-        // 通常の Redo
-        return prevIndex + 1;
-      });
+      setHistoryIndex((prevIndex) => prevIndex + 1);
     }
-  }, [history, historyIndex]);
+  }, [history.length, historyIndex]);
+
+  const restoreHistory = useCallback(
+    (index: number) => {
+      if (index >= 0 && index < history.length) {
+        setHistoryIndex(index);
+      }
+    },
+    [history.length]
+  );
+
+  const cellsData = useMemo(() => {
+    const data: { key: string; row: number; col: number }[] = [];
+    for (let row = 0; row < rowCount; row++) {
+      for (let col = 0; col < colCount; col++) {
+        data.push({ key: `${row},${col}`, row, col });
+      }
+    }
+    return data;
+  }, [rowCount, colCount]);
 
   const gridLinesPath = useMemo(() => {
     let path = "";
@@ -226,40 +249,35 @@ const Grid: React.FC = () => {
     return path.trim();
   }, [width, height, cellSize, rowCount, colCount]);
 
-  const cellsData = useMemo(() => {
-    const data: CellData[] = [];
-    for (let row = 0; row < rowCount; row++) {
-      for (let col = 0; col < colCount; col++) {
-        const key = `${row},${col}`;
-        data.push({
-          key,
-          row,
-          col,
-          isSelected: selectedCells.has(key),
-        });
-      }
-    }
-    return data;
-  }, [rowCount, colCount, selectedCells]);
-
   const outlinePath = useMemo(() => {
     const paths: string[] = [];
-    for (const cellKey of selectedCells) {
-      const [row, col] = cellKey.split(",").map(Number);
+    for (const [key, { hasOutline }] of cellStates) {
+      if (!hasOutline) continue;
+      const [row, col] = key.split(",").map(Number);
       const x = strokeWidth / 2 + col * cellSize;
       const y = strokeWidth / 2 + row * cellSize;
 
-      if (!selectedCells.has(`${row - 1},${col}`))
+      if (!cellStates.get(`${row - 1},${col}`)?.hasOutline)
         paths.push(`M${x},${y}h${cellSize}`);
-      if (!selectedCells.has(`${row},${col + 1}`))
+      if (!cellStates.get(`${row},${col + 1}`)?.hasOutline)
         paths.push(`M${x + cellSize},${y}v${cellSize}`);
-      if (!selectedCells.has(`${row + 1},${col}`))
+      if (!cellStates.get(`${row + 1},${col}`)?.hasOutline)
         paths.push(`M${x},${y + cellSize}h${cellSize}`);
-      if (!selectedCells.has(`${row},${col - 1}`))
+      if (!cellStates.get(`${row},${col - 1}`)?.hasOutline)
         paths.push(`M${x},${y}v${cellSize}`);
     }
     return paths.join(" ");
-  }, [selectedCells, cellSize, strokeWidth]);
+  }, [cellStates, cellSize, strokeWidth]);
+
+  const colors = [
+    "#000000",
+    "#FF0000",
+    "#00FF00",
+    "#0000FF",
+    "#FFFF00",
+    "#FF00FF",
+    "#00FFFF",
+  ];
 
   return (
     <div>
@@ -299,6 +317,33 @@ const Grid: React.FC = () => {
         />
         <span>{colCount}</span>
       </div>
+      <div>
+        <h3>Color Palette:</h3>
+        {colors.map((color) => (
+          <button
+            key={color}
+            style={{
+              backgroundColor: color,
+              width: "30px",
+              height: "30px",
+              margin: "0 5px",
+              border:
+                color === selectedColor ? "3px solid black" : "1px solid gray",
+            }}
+            onClick={() => setSelectedColor(color)}
+          />
+        ))}
+      </div>
+      <div>
+        <label>
+          <input
+            type="checkbox"
+            checked={showOutline}
+            onChange={() => setShowOutline((prev) => !prev)}
+          />
+          Show Outline for New Cells
+        </label>
+      </div>
       <button onClick={clearOutOfBoundsCells}>Clear Out-of-Bounds Cells</button>
       <button onClick={fillEnclosedAreas}>Fill Enclosed Areas</button>
       <button onClick={clearAllCells}>Clear All Cells</button>
@@ -324,19 +369,26 @@ const Grid: React.FC = () => {
         />
         <path
           d={gridLinesPath}
-          stroke="black"
+          stroke="#a0a0a0"
           strokeWidth={strokeWidth}
           fill="none"
         />
         <g>
-          {cellsData.map((cellData) => (
-            <Cell
-              {...cellData}
-              onClick={handleCellClick}
-              cellSize={cellSize}
-              strokeWidth={strokeWidth}
-            />
-          ))}
+          {cellsData.map(({ key, row, col }) => {
+            const cellState = cellStates.get(key);
+            return (
+              <Cell
+                key={key}
+                row={row}
+                col={col}
+                cellSize={cellSize}
+                strokeWidth={strokeWidth}
+                color={cellState?.color}
+                hasOutline={cellState?.hasOutline ?? false}
+                onToggle={handleCellToggle}
+              />
+            );
+          })}
         </g>
         <path
           d={outlinePath}
@@ -347,10 +399,21 @@ const Grid: React.FC = () => {
         />
       </svg>
       <div>
-        <h3>Selected cells:</h3>
+        <h3>History:</h3>
         <ul>
-          {[...selectedCells].map((cellKey) => (
-            <li key={cellKey}>{cellKey}</li>
+          {history.map((entry, index) => (
+            <li
+              key={index}
+              style={{
+                fontWeight: index === historyIndex ? "bold" : "normal",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+              onClick={() => restoreHistory(index)}
+            >
+              {entry.lastAction} - {entry.cells.size} cells modified
+              {index === historyIndex && " (current)"}
+            </li>
           ))}
         </ul>
       </div>
