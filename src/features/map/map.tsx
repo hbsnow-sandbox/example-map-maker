@@ -1,41 +1,47 @@
 import React, { useState, useMemo, useCallback } from "react";
+import styles from "./Grid.module.css";
 
-const Cell = React.memo(
-  ({
-    row,
-    col,
-    isSelected,
-    isHovered,
-    onMouseEnter,
-    onMouseLeave,
-    onClick,
-    cellSize,
-    strokeWidth,
-  }) => (
+type CellData = {
+  key: string;
+  row: number;
+  col: number;
+  isSelected: boolean;
+};
+
+type CellProps = CellData & {
+  onClick: (row: number, col: number) => void;
+  cellSize: number;
+  strokeWidth: number;
+};
+
+const Cell: React.FC<CellProps> = React.memo(
+  ({ row, col, isSelected, onClick, cellSize, strokeWidth }) => (
     <rect
+      className={`${styles.cell} ${isSelected ? styles.selected : ""}`}
       x={strokeWidth / 2 + col * cellSize}
       y={strokeWidth / 2 + row * cellSize}
       width={cellSize}
       height={cellSize}
-      fill={isSelected ? "yellow" : isHovered ? "lightblue" : "white"}
-      stroke="black"
       strokeWidth={strokeWidth}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      onClick={onClick}
+      onClick={() => onClick(row, col)}
     />
   )
 );
 
-const Grid = () => {
-  const size = 300;
-  const cellSize = 30;
+const Grid: React.FC = () => {
+  const [cellSize, setCellSize] = useState(30);
+  const [rowCount, setRowCount] = useState(10);
+  const [colCount, setColCount] = useState(10);
   const strokeWidth = 1;
-  const actualSize = size + strokeWidth;
-  const [hoveredCell, setHoveredCell] = useState(null);
-  const [selectedCells, setSelectedCells] = useState(new Set());
 
-  const handleCellClick = useCallback((row, col) => {
+  const width = cellSize * colCount;
+  const height = cellSize * rowCount;
+  const actualWidth = width + strokeWidth;
+  const actualHeight = height + strokeWidth;
+
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
+
+  const handleCellClick = useCallback((row: number, col: number) => {
     setSelectedCells((prevSelected) => {
       const newSelected = new Set(prevSelected);
       const key = `${row},${col}`;
@@ -48,95 +54,143 @@ const Grid = () => {
     });
   }, []);
 
-  const handleMouseEnter = useCallback((row, col) => {
-    setHoveredCell(`${row},${col}`);
-  }, []);
+  const handleCellSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newSize = Number(event.target.value);
+    if (newSize >= 10 && newSize <= 100) {
+      setCellSize(newSize);
+    }
+  };
 
-  const handleMouseLeave = useCallback(() => {
-    setHoveredCell(null);
-  }, []);
+  const handleRowCountChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newCount = Number(event.target.value);
+    if (newCount >= 1 && newCount <= 20) {
+      setRowCount(newCount);
+    }
+  };
+
+  const handleColCountChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newCount = Number(event.target.value);
+    if (newCount >= 1 && newCount <= 20) {
+      setColCount(newCount);
+    }
+  };
+
+  const gridLinesPath = useMemo(() => {
+    let path = "";
+    for (let i = 0; i <= colCount; i++) {
+      const x = i * cellSize;
+      path += `M${x},0 V${height} `;
+    }
+    for (let i = 0; i <= rowCount; i++) {
+      const y = i * cellSize;
+      path += `M0,${y} H${width} `;
+    }
+    return path.trim();
+  }, [width, height, cellSize, rowCount, colCount]);
+
+  const cellsData = useMemo(() => {
+    const data: CellData[] = [];
+    for (let row = 0; row < rowCount; row++) {
+      for (let col = 0; col < colCount; col++) {
+        const key = `${row},${col}`;
+        data.push({
+          key,
+          row,
+          col,
+          isSelected: selectedCells.has(key),
+        });
+      }
+    }
+    return data;
+  }, [rowCount, colCount, selectedCells]);
 
   const outlinePath = useMemo(() => {
-    const outlinePaths = [];
-
+    const paths: string[] = [];
     for (const cellKey of selectedCells) {
       const [row, col] = cellKey.split(",").map(Number);
-      const top = !selectedCells.has(`${row - 1},${col}`);
-      const right = !selectedCells.has(`${row},${col + 1}`);
-      const bottom = !selectedCells.has(`${row + 1},${col}`);
-      const left = !selectedCells.has(`${row},${col - 1}`);
-
       const x = strokeWidth / 2 + col * cellSize;
       const y = strokeWidth / 2 + row * cellSize;
 
-      if (top) outlinePaths.push(`M${x},${y}h${cellSize}`);
-      if (right) outlinePaths.push(`M${x + cellSize},${y}v${cellSize}`);
-      if (bottom) outlinePaths.push(`M${x},${y + cellSize}h${cellSize}`);
-      if (left) outlinePaths.push(`M${x},${y}v${cellSize}`);
-    }
-
-    return outlinePaths.join(" ");
-  }, [selectedCells, cellSize, strokeWidth]);
-
-  const gridPath = useMemo(() => {
-    const paths = [];
-    for (let i = 0; i <= 10; i++) {
-      paths.push(
-        `M${strokeWidth / 2 + i * cellSize},${strokeWidth / 2}v${size}`
-      );
-      paths.push(
-        `M${strokeWidth / 2},${strokeWidth / 2 + i * cellSize}h${size}`
-      );
+      if (!selectedCells.has(`${row - 1},${col}`))
+        paths.push(`M${x},${y}h${cellSize}`);
+      if (!selectedCells.has(`${row},${col + 1}`))
+        paths.push(`M${x + cellSize},${y}v${cellSize}`);
+      if (!selectedCells.has(`${row + 1},${col}`))
+        paths.push(`M${x},${y + cellSize}h${cellSize}`);
+      if (!selectedCells.has(`${row},${col - 1}`))
+        paths.push(`M${x},${y}v${cellSize}`);
     }
     return paths.join(" ");
-  }, [size, cellSize, strokeWidth]);
+  }, [selectedCells, cellSize, strokeWidth]);
 
   return (
     <div>
+      <div>
+        <label htmlFor="cellSize">Cell Size: </label>
+        <input
+          id="cellSize"
+          type="range"
+          min="10"
+          max="100"
+          value={cellSize}
+          onChange={handleCellSizeChange}
+        />
+        <span>{cellSize}px</span>
+      </div>
+      <div>
+        <label htmlFor="rowCount">Row Count: </label>
+        <input
+          id="rowCount"
+          type="range"
+          min="1"
+          max="20"
+          value={rowCount}
+          onChange={handleRowCountChange}
+        />
+        <span>{rowCount}</span>
+      </div>
+      <div>
+        <label htmlFor="colCount">Column Count: </label>
+        <input
+          id="colCount"
+          type="range"
+          min="1"
+          max="20"
+          value={colCount}
+          onChange={handleColCountChange}
+        />
+        <span>{colCount}</span>
+      </div>
       <svg
-        width={actualSize}
-        height={actualSize}
-        viewBox={`0 0 ${actualSize} ${actualSize}`}
-        style={{ border: "none" }}
+        width={actualWidth}
+        height={actualHeight}
+        viewBox={`0 0 ${actualWidth} ${actualHeight}`}
       >
-        {/* 背景の白い四角形 */}
         <rect
           x={strokeWidth / 2}
           y={strokeWidth / 2}
-          width={size}
-          height={size}
+          width={width}
+          height={height}
           fill="white"
           stroke="black"
           strokeWidth={strokeWidth}
         />
-
-        {/* グリッド線 */}
         <path
-          d={gridPath}
+          d={gridLinesPath}
           stroke="black"
           strokeWidth={strokeWidth}
           fill="none"
         />
-
-        {/* セル */}
-        {[...Array(10)].map((_, rowIndex) =>
-          [...Array(10)].map((_, colIndex) => (
+        <g>
+          {cellsData.map((cellData) => (
             <Cell
-              key={`${rowIndex},${colIndex}`}
-              row={rowIndex}
-              col={colIndex}
-              isSelected={selectedCells.has(`${rowIndex},${colIndex}`)}
-              isHovered={hoveredCell === `${rowIndex},${colIndex}`}
-              onMouseEnter={() => handleMouseEnter(rowIndex, colIndex)}
-              onMouseLeave={handleMouseLeave}
-              onClick={() => handleCellClick(rowIndex, colIndex)}
+              {...cellData}
+              onClick={handleCellClick}
               cellSize={cellSize}
               strokeWidth={strokeWidth}
             />
-          ))
-        )}
-
-        {/* 選択されたセルのアウトライン */}
+          ))}
+        </g>
         <path
           d={outlinePath}
           fill="none"
@@ -148,16 +202,13 @@ const Grid = () => {
       <div>
         <h3>Selected cells:</h3>
         <ul>
-          {[...selectedCells].map((cellKey) => {
-            const [row, col] = cellKey.split(",");
-            return (
-              <li key={cellKey}>
-                [row: {row}, cell: {col}]
-              </li>
-            );
-          })}
+          {[...selectedCells].map((cellKey) => (
+            <li key={cellKey}>{cellKey}</li>
+          ))}
         </ul>
       </div>
     </div>
   );
 };
+
+export default Grid;

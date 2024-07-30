@@ -1,0 +1,17 @@
+/* Grid.module.css */
+.cell {
+  stroke: black;
+  fill: white; /* デフォルトの背景色を白に設定 */
+}
+
+.cell:hover {
+  fill: lightblue;
+}
+
+.selected {
+  fill: yellow;
+}
+
+.selected:hover {
+  fill: yellow;
+}
