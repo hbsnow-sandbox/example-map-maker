@@ -8,11 +8,21 @@ type CellProps = {
   strokeWidth: number;
   color: string | undefined;
   hasOutline: boolean;
+  outlineColor: string;
   onToggle: (row: number, col: number) => void;
 };
 
 const Cell: React.FC<CellProps> = React.memo(
-  ({ row, col, cellSize, strokeWidth, color, hasOutline, onToggle }) => {
+  ({
+    row,
+    col,
+    cellSize,
+    strokeWidth,
+    color,
+    hasOutline,
+    outlineColor,
+    onToggle,
+  }) => {
     const handleClick = useCallback(() => {
       onToggle(row, col);
     }, [onToggle, row, col]);
@@ -34,7 +44,10 @@ const Cell: React.FC<CellProps> = React.memo(
 );
 
 type HistoryEntry = {
-  cells: Map<string, { color: string; hasOutline: boolean }>;
+  cells: Map<
+    string,
+    { color: string; hasOutline: boolean; outlineColor: string }
+  >;
   lastAction: string;
 };
 
@@ -55,6 +68,7 @@ const Grid: React.FC = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedColor, setSelectedColor] = useState("#000000");
   const [showOutline, setShowOutline] = useState(true);
+  const [outlineColor, setOutlineColor] = useState("#FF0000");
   const [colors, setColors] = useState([
     "#000000",
     "#FF0000",
@@ -73,7 +87,10 @@ const Grid: React.FC = () => {
 
   const updateHistory = useCallback(
     (
-      newCellStates: Map<string, { color: string; hasOutline: boolean }>,
+      newCellStates: Map<
+        string,
+        { color: string; hasOutline: boolean; outlineColor: string }
+      >,
       action: string
     ) => {
       setHistory((prevHistory) => {
@@ -102,6 +119,7 @@ const Grid: React.FC = () => {
         newCellStates.set(key, {
           color: selectedColor,
           hasOutline: showOutline,
+          outlineColor: showOutline ? outlineColor : "",
         });
         updateHistory(
           newCellStates,
@@ -109,7 +127,7 @@ const Grid: React.FC = () => {
         );
       }
     },
-    [cellStates, selectedColor, showOutline, updateHistory]
+    [cellStates, selectedColor, showOutline, outlineColor, updateHistory]
   );
 
   const handleCellSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,7 +154,7 @@ const Grid: React.FC = () => {
   const clearOutOfBoundsCells = useCallback(() => {
     const newCellStates = new Map<
       string,
-      { color: string; hasOutline: boolean }
+      { color: string; hasOutline: boolean; outlineColor: string }
     >();
     for (const [key, state] of cellStates) {
       const [row, col] = key.split(",").map(Number);
@@ -198,6 +216,7 @@ const Grid: React.FC = () => {
               newCellStates.set(cell, {
                 color: selectedColor,
                 hasOutline: showOutline,
+                outlineColor: showOutline ? outlineColor : "",
               });
             }
           }
@@ -212,6 +231,7 @@ const Grid: React.FC = () => {
     colCount,
     selectedColor,
     showOutline,
+    outlineColor,
     updateHistory,
   ]);
 
@@ -260,23 +280,29 @@ const Grid: React.FC = () => {
   }, [width, height, cellSize, rowCount, colCount]);
 
   const outlinePath = useMemo(() => {
-    const paths: string[] = [];
-    for (const [key, { hasOutline }] of cellStates) {
+    const paths: { path: string; color: string }[] = [];
+    for (const [key, { hasOutline, outlineColor }] of cellStates) {
       if (!hasOutline) continue;
       const [row, col] = key.split(",").map(Number);
       const x = strokeWidth / 2 + col * cellSize;
       const y = strokeWidth / 2 + row * cellSize;
 
       if (!cellStates.get(`${row - 1},${col}`)?.hasOutline)
-        paths.push(`M${x},${y}h${cellSize}`);
+        paths.push({ path: `M${x},${y}h${cellSize}`, color: outlineColor });
       if (!cellStates.get(`${row},${col + 1}`)?.hasOutline)
-        paths.push(`M${x + cellSize},${y}v${cellSize}`);
+        paths.push({
+          path: `M${x + cellSize},${y}v${cellSize}`,
+          color: outlineColor,
+        });
       if (!cellStates.get(`${row + 1},${col}`)?.hasOutline)
-        paths.push(`M${x},${y + cellSize}h${cellSize}`);
+        paths.push({
+          path: `M${x},${y + cellSize}h${cellSize}`,
+          color: outlineColor,
+        });
       if (!cellStates.get(`${row},${col - 1}`)?.hasOutline)
-        paths.push(`M${x},${y}v${cellSize}`);
+        paths.push({ path: `M${x},${y}v${cellSize}`, color: outlineColor });
     }
-    return paths.join(" ");
+    return paths;
   }, [cellStates, cellSize, strokeWidth]);
 
   const addCustomColor = useCallback(() => {
@@ -350,6 +376,14 @@ const Grid: React.FC = () => {
         <button onClick={addCustomColor}>Add Custom Color</button>
       </div>
       <div>
+        <h3>Outline Color:</h3>
+        <input
+          type="color"
+          value={outlineColor}
+          onChange={(e) => setOutlineColor(e.target.value)}
+        />
+      </div>
+      <div>
         <label>
           <input
             type="checkbox"
@@ -400,18 +434,22 @@ const Grid: React.FC = () => {
                 strokeWidth={strokeWidth}
                 color={cellState?.color}
                 hasOutline={cellState?.hasOutline ?? false}
+                outlineColor={cellState?.outlineColor ?? ""}
                 onToggle={handleCellToggle}
               />
             );
           })}
         </g>
-        <path
-          d={outlinePath}
-          fill="none"
-          stroke="red"
-          strokeWidth={2}
-          pointerEvents="none"
-        />
+        {outlinePath.map((path, index) => (
+          <path
+            key={index}
+            d={path.path}
+            fill="none"
+            stroke={path.color}
+            strokeWidth={2}
+            pointerEvents="none"
+          />
+        ))}
       </svg>
       <div>
         <h3>History:</h3>
