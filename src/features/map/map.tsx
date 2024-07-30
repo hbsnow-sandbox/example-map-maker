@@ -106,8 +106,25 @@ const Grid: React.FC = () => {
   }, [selectedCells, rowCount, colCount, updateHistory]);
 
   const clearAllCells = useCallback(() => {
-    updateHistory(new Set());
-  }, [updateHistory]);
+    setHistory((prevHistory) => {
+      // 現在の状態を保存
+      const currentState = new Set(prevHistory[historyIndex]);
+
+      // 新しい空の状態を追加
+      const newHistory = [
+        ...prevHistory.slice(0, historyIndex + 1),
+        new Set<string>(),
+      ];
+
+      // 現在の状態を履歴の最後に追加 (Undo 用)
+      newHistory.push(currentState);
+
+      return newHistory;
+    });
+
+    // ヒストリーインデックスを更新 (空の状態を指すように)
+    setHistoryIndex((prevIndex) => prevIndex + 1);
+  }, [historyIndex]);
 
   const fillEnclosedAreas = useCallback(() => {
     const isSelected = (row: number, col: number) =>
@@ -165,15 +182,36 @@ const Grid: React.FC = () => {
 
   const undo = useCallback(() => {
     if (historyIndex > 0) {
-      setHistoryIndex((prevIndex) => prevIndex - 1);
+      setHistoryIndex((prevIndex) => {
+        // Clear All Cells 操作の直後の場合、2つ前の状態に戻る
+        if (
+          prevIndex > 0 &&
+          history[prevIndex].size === 0 &&
+          history[prevIndex + 1]?.size > 0
+        ) {
+          return prevIndex - 2;
+        }
+        // 通常の Undo
+        return prevIndex - 1;
+      });
     }
-  }, [historyIndex]);
+  }, [historyIndex, history]);
 
   const redo = useCallback(() => {
     if (historyIndex < history.length - 1) {
-      setHistoryIndex((prevIndex) => prevIndex + 1);
+      setHistoryIndex((prevIndex) => {
+        // Clear All Cells 操作をスキップ
+        if (
+          history[prevIndex + 1].size === 0 &&
+          history[prevIndex + 2]?.size > 0
+        ) {
+          return prevIndex + 2;
+        }
+        // 通常の Redo
+        return prevIndex + 1;
+      });
     }
-  }, [history.length, historyIndex]);
+  }, [history, historyIndex]);
 
   const gridLinesPath = useMemo(() => {
     let path = "";
